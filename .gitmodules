@@ -1,0 +1,3 @@
+[submodule "odin-bfd"]
+	path = odin-bfd
+	url = https://github.com/wardjm/odin-bfd
