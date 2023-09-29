@@ -1,3 +1,6 @@
 [submodule "odin-bfd"]
 	path = odin-bfd
 	url = https://github.com/wardjm/odin-bfd
+[submodule "odin-capstone"]
+	path = odin-capstone
+	url = https://github.com/wardjm/odin-capstone
