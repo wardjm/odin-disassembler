@@ -5,11 +5,35 @@ import "core:strings"
 import "core:os"
 import bfd "./odin-bfd"
 
+dis_mode :: enum {
+    LINEAR_DIS,
+    RECURSIVE_DIS
+}
+
+print_usage :: proc() {
+    fmt.println(os.args[0], "<bin> <mode>")
+    fmt.println("mode: [-l|-r]")
+    fmt.println("-l: linear disassembler")
+    fmt.println("-r: recursive disassembler")    
+}
+
 main :: proc() {
 
-    if len(os.args) != 2 {
-	fmt.println(os.args[0], "<bin>")
+    if len(os.args) != 3 {
+	print_usage()
 	return 
+    }
+
+    mode : dis_mode
+    if os.args[2] == "-l" {
+	mode = .LINEAR_DIS
+    }
+    else if os.args[2] == "-r" {
+	mode = .RECURSIVE_DIS
+    }
+    else {
+	print_usage()
+	return
     }
 
     // Load binary, then do disassembly
@@ -105,7 +129,13 @@ main :: proc() {
 
     // Loaded binary, now do disassembly
 
-    disasm(&bin)
-    
+    switch mode {
+
+    case .LINEAR_DIS:
+	disasm(&bin)
+    case .RECURSIVE_DIS:
+	recursive_disasm(&bin)
+	
+    }
 }
 

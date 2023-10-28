@@ -5,6 +5,10 @@ import "core:slice"
 
 import cap "./odin-capstone"
 
+recursive_disasm :: proc(bin: ^Binary) {
+    fmt.println("Recursive")
+}
+
 disasm :: proc(bin: ^Binary) {
 
     dis : cap.csh
