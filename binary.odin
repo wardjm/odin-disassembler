@@ -57,6 +57,16 @@ Binary :: struct {
     symbols: [dynamic]Symbol
 }
 
+contains :: proc(sec: ^Section, addr : u64) -> bool {
+    if addr < sec.vma {
+	return false
+    }
+    if addr > sec.vma + sec.size {
+	return false
+    }
+    return true
+}
+
 get_text_section :: proc(bin: ^Binary) -> ^Section {
     s : Section
 
