@@ -2,6 +2,7 @@ package binary
 
 import "core:fmt"
 import "core:slice"
+import "core:strings"
 
 import cap "./odin-capstone"
 
@@ -19,7 +20,11 @@ print_ins :: proc(ins : ^cap.cs_insn) {
 	    fmt.printf("   ")
 	}
     }
-    fmt.printf("%s %s\n", ins.mnemonic, ins.op_str)
+    
+    str1 : cstring = cstring(raw_data(ins.mnemonic[:]))
+    str2 : cstring = cstring(raw_data(ins.op_str[:]))
+
+    fmt.println(str1, str2)
     
 }
 
