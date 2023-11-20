@@ -16,7 +16,7 @@ print_ins :: proc(ins : ^cap.cs_insn) {
 	    fmt.printf("%02x ", ins.bytes[j])
 	}
 	else {
-	    fmt.printf(" ")
+	    fmt.printf("   ")
 	}
     }
     fmt.printf("%s %s\n", ins.mnemonic, ins.op_str)
@@ -84,9 +84,31 @@ is_cs_unconditional_cflow_ins :: proc(ins : ^cap.cs_insn) -> bool {
     return false
 }
 
-recursive_disasm :: proc(bin: ^Binary) {
+contains_local :: proc(vma : u64, addr : u64, size : u64) -> bool {
 
-    fmt.println("Recursive")
+    if addr < vma {
+	return false
+    }
+    if addr > vma + size {
+	return false
+    }
+    return true
+
+}
+
+exists :: proc(Q : ^[dynamic]u64, test : u64) -> bool {
+
+    for q in Q {
+	if q == test {
+	    return true
+	}
+    }
+    return false
+}
+
+// Disassemble bin of length size starting at start with optional vma and symbols
+// If size == 0, go until ret (for single function disassembly)
+recursive_disasm_piece :: proc(bin : []u8, size : u64, start : u64, vma : u64, symbols : []Symbol) {
 
     dis : cap.csh
     insns : ^cap.cs_insn
@@ -98,42 +120,51 @@ recursive_disasm :: proc(bin: ^Binary) {
     i : u32
     Q : [dynamic]u64 // could use actual Queue in the future
     seen : map[u64]bool
-    
-    text = get_text_section(bin)
+    symbol_tab : map[u64]string
 
-    if text == nil {
-	fmt.println("No text section")
+    if symbols != nil {
+	for s in symbols {
+	    symbol_tab[s.addr] = s.name
+	}
+    }
+    
+    err = cap.cs_open(cap.cs_arch.CS_ARCH_X86, cap.cs_mode.CS_MODE_64, &dis)
+    defer cap.cs_close(&dis)
+
+    if err != cap.cs_err.CS_ERR_OK {
+	fmt.println(err)
 	return
     }
 
-    fmt.println(text.name, text.vma, text.size)
+    err = cap.cs_option(dis, cap.cs_opt_type.CS_OPT_DETAIL, cap.cs_opt_value.CS_OPT_ON)
 
-    err = cap.cs_open(cap.cs_arch.CS_ARCH_X86, cap.cs_mode.CS_MODE_64, &dis)
-    defer cap.cs_close(&dis)
+    if err != cap.cs_err.CS_ERR_OK {
+	fmt.println(err)
+	return
+    }
     
-    fmt.println(err)
-    fmt.println(dis)
-
-    cap.cs_option(dis, cap.cs_opt_type.CS_OPT_DETAIL, cap.cs_opt_value.CS_OPT_ON)
-
     cs_ins = cap.cs_malloc(dis)
-
+    defer cap.cs_free(cs_ins, 1)
+    
     if cs_ins == nil {
 	fmt.println("Out of memory")
 	return
     }
     
-    addr = bin.entry
-    fmt.println("start = ", addr)
+    addr = start + vma
+    
+    append(&Q, addr)
 
-    if contains(text, addr) {
-	fmt.println("In text")
-	append(&Q, addr)
-    }
+    for sym in symbols {
 
-    for sym in bin.symbols {
-	if sym.type == .SYM_TYPE_FUNC && contains(text, sym.addr) {
+	if sym.type == .SYM_TYPE_FUNC && contains_local(vma, sym.addr, size) {
+
+	    if exists(&Q, sym.addr) {
+		continue
+	    }
+
 	    append(&Q, sym.addr)
+
 	    fmt.println(sym)
 	}
     }
@@ -146,11 +177,23 @@ recursive_disasm :: proc(bin: ^Binary) {
 	    continue
 	}
 
-	offset := addr - text.vma
-	pc := text.bytes[offset:]
-	n := text.size - offset
+	if addr in symbol_tab {
+	    fmt.println(symbol_tab[addr], ":")
+	}
+
+	offset := addr - vma
+	pc := bin[offset:]
+	n : u64
+
+	if size == 0 {
+	    n = u64(len(pc))
+	}
+	else {
+	    n = size - offset
+	}
 
 	for cap.cs_disasm_iter(dis, &pc, &n, &addr, cs_ins) {
+	    
 	    if cs_ins.id == u32(cap.x86_insn.X86_INS_INVALID) || cs_ins.size == 0 {
 		fmt.println("Bad instruction")
 		break
@@ -165,7 +208,7 @@ recursive_disasm :: proc(bin: ^Binary) {
 		// Instruction is a jmp
 		target := get_cs_ins_immediate_target(cs_ins)
 
-		if target != 0 && !(addr in seen) && contains(text, target) {
+		if target != 0 && !(addr in seen) && contains_local(vma, target, size) {
 		    append(&Q, target)
 		    fmt.printf(" --> new target: 0x%016x\n", target)
 		}
@@ -182,11 +225,56 @@ recursive_disasm :: proc(bin: ^Binary) {
 	
     }
 
-    cap.cs_free(cs_ins, 1)
-    cap.cs_close(&dis)
 }
 
-disasm :: proc(bin: ^Binary) {
+disasm_func :: proc(bin : ^Binary, func_name : string) {
+
+    text : ^Section
+
+    addr : u64 = 0
+    
+    text = get_text_section(bin)
+
+    if text == nil {
+	fmt.println("No text section")
+	return
+    }
+
+    for s in bin.symbols {
+	if s.name == func_name {
+	    addr = s.addr
+	}
+    }
+
+    if addr == 0 {
+	fmt.println("Unable to find function: ", func_name)
+	return
+    }
+
+    offset := addr - text.vma
+
+    recursive_disasm_piece(text.bytes[offset:], 0, 0, addr, bin.symbols[:])
+
+}
+
+recursive_disasm_bin :: proc(bin : ^Binary) {
+
+    text : ^Section
+    
+    text = get_text_section(bin)
+
+    if text == nil {
+	fmt.println("No text section")
+	return
+    }
+
+    start : u64 = bin.entry - text.vma
+    
+    recursive_disasm_piece(text.bytes[:], text.size, start, text.vma, bin.symbols[:])    
+
+}
+
+disasm_bin :: proc(bin: ^Binary) {
 
     dis : cap.csh
     insns : ^cap.cs_insn

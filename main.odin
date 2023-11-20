@@ -7,19 +7,21 @@ import bfd "./odin-bfd"
 
 dis_mode :: enum {
     LINEAR_DIS,
-    RECURSIVE_DIS
+    RECURSIVE_DIS,
+    SINGLE_FUNC_DIS
 }
 
 print_usage :: proc() {
     fmt.println(os.args[0], "<bin> <mode>")
-    fmt.println("mode: [-l|-r]")
+    fmt.println("mode: [-l|-r|-f <name>]")
     fmt.println("-l: linear disassembler")
-    fmt.println("-r: recursive disassembler")    
+    fmt.println("-r: recursive disassembler")
+    fmt.println("-f: disassemble single function")
 }
 
 main :: proc() {
 
-    if len(os.args) != 3 {
+    if len(os.args) != 3 && len(os.args) != 4 {
 	print_usage()
 	return 
     }
@@ -31,11 +33,14 @@ main :: proc() {
     else if os.args[2] == "-r" {
 	mode = .RECURSIVE_DIS
     }
+    else if os.args[2] == "-f" {
+	mode = .SINGLE_FUNC_DIS
+    }
     else {
 	print_usage()
 	return
     }
-
+    
     // Load binary, then do disassembly
     
     bin : Binary
@@ -132,9 +137,11 @@ main :: proc() {
     switch mode {
 
     case .LINEAR_DIS:
-	disasm(&bin)
+	disasm_bin(&bin)
     case .RECURSIVE_DIS:
-	recursive_disasm(&bin)
+	recursive_disasm_bin(&bin)
+    case .SINGLE_FUNC_DIS:
+	disasm_func(&bin, os.args[3])
 	
     }
 }
